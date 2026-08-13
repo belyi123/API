@@ -22,6 +22,11 @@ def init_db():
         conn.commit()
 
 
+# ВАЖЛИВО: Викликаємо створення БД одразу при завантаженні скрипта,
+# щоб Gunicorn обов'язково створив таблицю при старті!
+init_db()
+
+
 def log_request(ip, user_agent, path):
     """Збереження даних про запит у базу даних."""
     with sqlite3.connect(DB_NAME) as conn:
@@ -36,9 +41,13 @@ def log_request(ip, user_agent, path):
 
 @app.route('/')
 def home():
-    # Отримання IP-адреси відвідувача.
-    # Якщо сервер стоїть за проксі (Nginx/Cloudflare), використовується заголовок X-Forwarded-For
-    ip_address = request.headers.get('X-Forwarded-For', request.remote_addr)
+    # Якщо сервер за проксі, беремо перший IP з X-Forwarded-For
+    x_forwarded_for = request.headers.get('X-Forwarded-For')
+    if x_forwarded_for:
+        ip_address = x_forwarded_for.split(',')[0].strip()
+    else:
+        ip_address = request.remote_addr
+
     user_agent = request.headers.get('User-Agent', 'Unknown')
 
     # Запис у базі даних
@@ -55,7 +64,6 @@ def view_logs():
         cursor.execute("SELECT id, ip_address, timestamp, path, user_agent FROM logs ORDER BY id DESC")
         logs = cursor.fetchall()
 
-    # Простий HTML-шаблон для відображення логів
     html_template = """
     <!DOCTYPE html>
     <html>
@@ -96,6 +104,5 @@ def view_logs():
 
 
 if __name__ == '__main__':
-    init_db()
-    # Запуск сервера на порту 5000
+    # Для локального запуску
     app.run(host='0.0.0.0', port=5000, debug=True)
